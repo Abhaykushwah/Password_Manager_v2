@@ -10,18 +10,6 @@ import os
 CONFIG_FILE_PATH = ".pm2.config"
 key_file_path = "secret.key"
 
-# Check if a key file exists or nnot
-try:
-    with open(key_file_path, "rb") as key_file:
-        key = key_file.read()
-except FileNotFoundError:
-    # If file doesn't exist, generate a new key
-    key = Fernet.generate_key()
-
-    # Save the key file
-    with open(key_file_path, "wb") as key_file:
-        key_file.write(key)
-crypto = Fernet(key)
 
 def setup_master_password():
     master_password = getpass("Set up your master password: ")
@@ -45,6 +33,45 @@ def check_master_password(entered_password_hash):
     # checkinng hash
     stored_master_password_hash = get_stored_master_password_hash()
     return entered_password_hash == stored_master_password_hash
+
+
+def master_password():
+    # Check if the master password is set up
+    if not os.path.exists(CONFIG_FILE_PATH):
+        if os.path.exists(key_file_path) or os.path.exists("passwords.csv"):
+            print("Old secret.key file or passwords.csv file found")
+            print("Frist you need to delete old secret.key file and passwords.csv")
+            print("Are you sure to delete the file secret.key and passwords.csv??")
+            for i in range(1,3):
+                user_input = input("Enter 'Y' for YES or 'N' for NO: ").upper()
+
+                if user_input == 'Y':
+                    print("You chose 'Yes'. Performing action...")
+                    if os.path.exists(key_file_path):
+                        os.remove(key_file_path)
+                    if os.path.exists("passwords.csv"):
+                        os.remove("passwords.csv")
+                elif user_input == 'N':
+                    print("You chose 'No'. Exiting...")
+                    sys.exit()
+
+                else:
+                    print("Invalid input. Please enter 'Y' or 'N'.")
+        setup_master_password()
+master_password()
+
+# Check if a key file exists or nnot
+try:
+    with open(key_file_path, "rb") as key_file:
+        key = key_file.read()
+except FileNotFoundError:
+    # If file doesn't exist, generate a new key
+    key = Fernet.generate_key()
+
+    # Save the key file
+    with open(key_file_path, "wb") as key_file:
+        key_file.write(key)
+crypto = Fernet(key)
 
 def generate_pass():
     length = int(input('''Enter the length of your password (RECOMMENDED[9-16])
@@ -113,15 +140,21 @@ Enter Your Choice : '''))
         view_saved_passwords()
     else:
         print("Enter a valid choice")
-
+MAX_ATTEMPTS = 3
 def view_saved_passwords():
-    # Ask for the master password
-    master_password_hash = hashlib.sha256(getpass("Enter Master Password: ").encode('utf-8')).hexdigest()
+    for attempt in range(MAX_ATTEMPTS):
+        # Ask for the master password
+        master_password_hash = hashlib.sha256(getpass("Enter Master Password: ").encode('utf-8')).hexdigest()
 
-    # Check if the master password is correct
-    if not check_master_password(master_password_hash):
-        print("Incorrect master password. Exiting.")
+        # Check if the master password is correct
+        if check_master_password(master_password_hash):
+            break
+        elif not check_master_password(master_password_hash):
+            print("Incorrect master password.")
+    else:
         sys.exit()
+    # print("3 Incorrect master password attempts. Exiting...")
+    # sys.exit()
 
     # Ask the user if they want to list all passwords or retrieve by site name/note
     print("1. List all passwords")
@@ -131,8 +164,8 @@ def view_saved_passwords():
     if choice == 1:
         list_all_passwords(master_password_hash)
     elif choice == 2:
-        site_name = input("Enter the site name to retrieve passwords (press Enter if none): ")
-        note = input("Enter the note to retrieve passwords (press Enter if none): ")
+        site_name = input("Enter the site name to retrieve passwords : ")
+        note = input("Enter the note to retrieve passwords (press Enter if none [Suggestion : Enter username/email]): ")
         retrieve_passwords_by_info(master_password_hash, site_name, note)
     else:
         print("Invalid choice. Exiting.")
@@ -169,10 +202,17 @@ def retrieve_passwords_by_info(master_password_hash, site_name, note):
                 print("Password:", decrp_pass)
                 print("Note:", row['Note'])
                 print("-------------------------------------------")
+             # Check if note is provided and matches, and the master password is correct
+            elif row['Note'] == note and check_master_password(master_password_hash):
+                # Decrypt the password
+                encrp_pass = row['Password'].encode('utf-8')
+                decrp_pass = crypto.decrypt(encrp_pass).decode('utf-8')
 
-# Check if the master password is set up
-if not os.path.exists(CONFIG_FILE_PATH):
-    setup_master_password()
+                # Print the information
+                print("Site Name:", row['Site Name'])
+                print("Password:", decrp_pass)
+                print("Note:", row['Note'])
+                print("-------------------------------------------")
 
 # Call Menu Function
 menu()
